@@ -15,7 +15,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
 from backend.apps.api import v1 as route
-from backend.apps.model import Role, User, UserRoleLink
+from backend.apps.model import Role, User, Project
 from backend.core import security
 from backend.core.config import root_path, settings
 from backend.utils.db_control import create_table, get_db
@@ -42,13 +42,13 @@ async def register_init(app: FastAPI):
     await create_table()
     await redis_client.open()
 
-    async with get_db_context() as session:
-        print("新建角色中...")
-        await InitializeData.create_roles(session)
-        print("添加管理员角色中...")
-        super_user = await InitializeData.create_super_user(session)
-        if super_user:
-            await InitializeData.bind_super_user_role(session, super_user)
+    # async with get_db_context() as session:
+    #     print("新建角色中...")
+    #     await InitializeData.create_roles(session)
+    #     print("添加管理员角色中...")
+    #     super_user = await InitializeData.create_super_user(session)
+    #     if super_user:
+    #         await InitializeData.bind_super_user_role(session, super_user)
     yield
 
     # 关闭 redis 连接
@@ -151,22 +151,21 @@ class InitializeData:
         new_user = User(username=admin_username, hashed_password=hashed_password, is_active=True)
         session.add(new_user)
         await session.commit()
-        logger.info(f"超级管理员 '{admin_username}' 已被创建")
-        return new_user
 
-    @classmethod
-    async def bind_super_user_role(cls, session: AsyncSession, super_user: User):
-        """
-        绑定超级管理员角色
-        """
-        super_admin_role = await session.execute(sql_select(Role).where(Role.name == "admin"))
-        super_admin_role = super_admin_role.scalars().first()
-        if super_admin_role:
-            user_role_link = UserRoleLink(user_id=super_user.id, role_id=super_admin_role.id)
-            session.add(user_role_link)
+        # 查找 admin 角色
+        stmt = sql_select(Role).where(Role.name == "admin")
+        admin_role = (await session.execute(stmt)).scalars().first()
+
+        if admin_role:
+            new_user.role = admin_role
             await session.commit()
-            logger.info(f"超级管理员: '{super_user.username}' 绑定角色: '{super_admin_role.name}'")
+            logger.info(f"超级管理员 '{admin_username}' 已被创建并分配角色 '{admin_role.name}'")
+        else:
+            logger.warning(f"未找到 'admin' 角色，超级管理员 '{admin_username}' 已创建但未分配角色")
 
+        return new_user
+    
+    
     @classmethod
     def migrate_model(cls, env: Environment = Environment.dev):
         """

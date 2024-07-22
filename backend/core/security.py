@@ -83,21 +83,6 @@ async def get_current_active_superuser(current_user: User) -> User:
     return current_user
 
 
-def get_user_by_username(*, session: Session, username: str) -> Optional[User]:
-    statement = select(User).where(User.username == username)
-    result = session.execute(statement).first()
-    return result[0] if result else None
-
-
-def authenticate_user(*, session: Session, username: str, password: str) -> Optional[User]:
-    db_user = get_user_by_username(session=session, username=username)
-    if not db_user:
-        return None
-    if not verify_password(password, db_user.hashed_password):
-        return None
-    return db_user
-
-
 # 用户依赖注入
 CurrentUser = Annotated[User, Depends(get_current_user)]
 # 权限依赖注入
